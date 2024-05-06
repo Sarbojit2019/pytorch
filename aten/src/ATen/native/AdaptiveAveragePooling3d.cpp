@@ -339,7 +339,7 @@ Tensor& adaptive_avg_pool3d_backward_out_cpu(const Tensor& gradOutput_,
 
 Tensor adaptive_avg_pool3d_backward_cpu(const Tensor& gradOutput_,
     const Tensor& input) {
-  auto gradInput = at::zeros_like(input, LEGACY_CONTIGUOUS_MEMORY_FORMAT);
+  auto gradInput = at::empty({0}, input.options());
   adaptive_avg_pool3d_backward_out_cpu_template(gradInput, gradOutput_, input);
   return gradInput;
 }
