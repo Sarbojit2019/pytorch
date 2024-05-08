@@ -19,6 +19,8 @@ cmake_policy(SET CMP0069 NEW)
 # nice when it's possible, and it's possible on our Windows configs.
 cmake_policy(SET CMP0092 NEW)
 
+message(STATUS "Building rocm pytorch on Intel platform")
+
 # Prohibit in-source builds
 if(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
 message(FATAL_ERROR "In-source build are not supported")
@@ -156,8 +158,10 @@ set(CPU_INTEL OFF)
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(AMD64|x86_64)")
   set(CPU_INTEL ON)
+  message(STATUS "CPU_INTEL=ON")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)")
   set(CPU_AARCH64 ON)
+  message(STATUS "CPU_AARCH64=ON")
 endif()
 
 
@@ -679,6 +683,9 @@ set(TORCH_SOVERSION "${TORCH_VERSION_MAJOR}.${TORCH_VERSION_MINOR}")
 # ---[ CMake scripts + modules
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/Modules)
 
+# --[ Sarbojit added
+list(APPEND CMAKE_MODULE_PATH "/home/sarbojit/packages/lib/cmake/hipblas")
+
 # ---[ CMake build directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
@@ -750,6 +757,7 @@ endif()
 # The only solution is to include(cmake/Dependencies.cmake), and defer the
 # aotriton build decision later.
 
+message(STATUS "USE_ROCM= ${USE_ROCM}")
 include(cmake/Dependencies.cmake)
 
 cmake_dependent_option(
@@ -1089,7 +1097,7 @@ endif()
 
 # ---[ Main build
 add_subdirectory(c10)
-add_subdirectory(caffe2)
+#add_subdirectory(caffe2)
 
 # --[ Documentation
 if(BUILD_DOCS)

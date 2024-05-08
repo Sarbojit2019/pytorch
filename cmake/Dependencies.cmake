@@ -183,7 +183,12 @@ endif()
 set(AT_MKLDNN_ACL_ENABLED 0)
 # setting default preferred BLAS options if not already present.
 if(NOT INTERN_BUILD_MOBILE)
+  if(${USE_CHIP})
+    set(BLAS "hipblas" CACHE STRING "Selected BLAS library")
+    set(USE_CHIP 1)
+  else()
   set(BLAS "MKL" CACHE STRING "Selected BLAS library")
+  endif()
 else()
   set(BLAS "Eigen" CACHE STRING "Selected BLAS library")
   set(AT_MKLDNN_ENABLED 0)
@@ -219,6 +224,7 @@ elseif(BLAS STREQUAL "MKL")
     find_package(MKL REQUIRED)
   else()
     find_package(MKL QUIET)
+    message(STATUS "CMAKE_MODULE_PATH = ${CMAKE_MODULE_PATH}")
   endif()
   include(${CMAKE_CURRENT_LIST_DIR}/public/mkl.cmake)
   if(MKL_FOUND)
@@ -267,6 +273,22 @@ elseif(BLAS STREQUAL "Generic")
   set(GENERIC_BLAS_FOUND TRUE)
   set(BLAS_INFO "generic")
   set(BLAS_FOUND 1)
+elseif(BLAS STREQUAL "hipblas")
+  find_package(hipblas REQUIRED)
+  if (hipblas_FOUND)
+    set(hipblas_INCLUDE_DIR $ENV{HIP_PATH}/include)
+    set(hipblas_LIB_DIR $ENV{HIP_PATH}/lib)
+    message(STATUS "hipblas found")
+    message(STATUS "hipblas_INCLUDE_DIR : ${hipblas_INCLUDE_DIR}")
+    message(STATUS "hipblas_LIB : ${hipblas_LIB_DIR}")
+    include_directories(SYSTEM ${hipblas_INCLUDE_DIR})
+    list(APPEND Caffe2_DEPENDENCY_LIBS ${hipblas_LIB})
+    set(BLAS_INFO "hipblas")
+    set(BLAS_FOUND 1)
+    set(BLAS_LIBRARIES ${hipblas_LIB_DIR})
+  else()
+    message(FATAL_ERROR "Still no hipblas")
+  endif()
 else()
   message(FATAL_ERROR "Unrecognized BLAS option: " ${BLAS})
 endif()
@@ -275,7 +297,7 @@ if(NOT INTERN_BUILD_MOBILE)
   set(AT_MKL_ENABLED 0)
   set(AT_MKL_SEQUENTIAL 0)
   set(USE_BLAS 1)
-  if(NOT (ATLAS_FOUND OR BLIS_FOUND OR GENERIC_BLAS_FOUND OR MKL_FOUND OR OpenBLAS_FOUND OR VECLIB_FOUND OR FlexiBLAS_FOUND OR NVPL_BLAS_FOUND))
+  if(NOT (ATLAS_FOUND OR BLIS_FOUND OR GENERIC_BLAS_FOUND OR MKL_FOUND OR OpenBLAS_FOUND OR VECLIB_FOUND OR FlexiBLAS_FOUND OR NVPL_BLAS_FOUND OR hipblas_FOUND))
     message(WARNING "Preferred BLAS (" ${BLAS} ") cannot be found, now searching for a general BLAS library")
     find_package(BLAS)
     if(NOT BLAS_FOUND)
@@ -283,11 +305,13 @@ if(NOT INTERN_BUILD_MOBILE)
     endif()
   endif()
 
+  if(NOT USE_CHIP)
   if(MKL_FOUND)
     if("${MKL_THREADING}" STREQUAL "SEQ")
       set(AT_MKL_SEQUENTIAL 1)
     endif()
     set(AT_MKL_ENABLED 1)
+    endif()
   endif()
 elseif(INTERN_USE_EIGEN_BLAS)
   # Eigen BLAS for Mobile
@@ -1191,7 +1215,12 @@ if(USE_ROCM)
 
   include(${CMAKE_CURRENT_LIST_DIR}/public/LoadHIP.cmake)
   if(PYTORCH_FOUND_HIP)
-    message(INFO "Compiling with HIP for AMD.")
+  if(USE_CHIP)
+    message(INFO " Compiling with CHIP for Intel GPU.")
+  else()
+    message(INFO " Compiling with HIP for AMD.")
+  endif()
+
     caffe2_update_option(USE_ROCM ON)
 
     if(USE_NCCL AND NOT USE_SYSTEM_NCCL)
@@ -1252,7 +1281,8 @@ if(USE_ROCM)
     set(Caffe2_HIP_INCLUDE
        $<INSTALL_INTERFACE:include> ${Caffe2_HIP_INCLUDE})
     # This is needed for library added by hip_add_library (same for hip_add_executable)
-    hip_include_directories(${Caffe2_HIP_INCLUDE})
+    #TODO: Need to check what is "hip_include_directories" do.
+    #hip_include_directories(${Caffe2_HIP_INCLUDE})
 
     set(Caffe2_PUBLIC_HIP_DEPENDENCY_LIBS
       ${PYTORCH_HIP_LIBRARIES} ${PYTORCH_MIOPEN_LIBRARIES} ${hipcub_LIBRARIES} ${ROCM_HIPRTC_LIB} ${ROCM_ROCTX_LIB})
@@ -1260,8 +1290,14 @@ if(USE_ROCM)
       list(APPEND Caffe2_PUBLIC_HIP_DEPENDENCY_LIBS ${hipblaslt_LIBRARIES})
     endif()
 
+if(USE_CHIP)
+    #TODO: need to add missing libraries
+    list(APPEND Caffe2_PUBLIC_HIP_DEPENDENCY_LIBS
+      hipblas hipsolver)
+else()
     list(APPEND Caffe2_PUBLIC_HIP_DEPENDENCY_LIBS
       roc::hipblas hip::hipfft hip::hiprand roc::hipsparse roc::hipsolver)
+endif()
 
     # ---[ Kernel asserts
     # Kernel asserts is disabled for ROCm by default.
@@ -1281,16 +1317,26 @@ if(USE_ROCM)
   endif()
 endif()
 
+if(USE_CHIP)
+  set(HIP_PATH ${ROCM_PATH})
+  set(HIPBLAS_PATH ${ROCM_PATH}/lib)
+endif()
+
+message(STATUS "USE_ROCM : ${USE_ROCM}")
+message(STATUS "HIP_PATH : ${HIP_PATH}")
+message(STATUS "HIPBLAS_PATH : ${HIPBLAS_PATH}")
+
 # ---[ ROCm
 if(USE_ROCM AND ROCM_VERSION_DEV VERSION_LESS "5.2.0")
   # We check again for USE_ROCM because it might have been set to OFF
   # in the if above
+  message(INFO " Setting include paths")
   include_directories(SYSTEM ${HIP_PATH}/include)
   include_directories(SYSTEM ${HIPBLAS_PATH}/include)
-  include_directories(SYSTEM ${HIPFFT_PATH}/include)
-  include_directories(SYSTEM ${HIPSPARSE_PATH}/include)
-  include_directories(SYSTEM ${HIPRAND_PATH}/include)
-  include_directories(SYSTEM ${THRUST_PATH})
+  #include_directories(SYSTEM ${HIPFFT_PATH}/include)
+  #include_directories(SYSTEM ${HIPSPARSE_PATH}/include)
+  #include_directories(SYSTEM ${HIPRAND_PATH}/include)
+  #include_directories(SYSTEM ${THRUST_PATH})
 endif()
 
 # ---[ NCCL
@@ -1324,6 +1370,7 @@ endif()
 
 # ---[ CUB
 if(USE_CUDA)
+message(INFO " USE_CUDA :${USE_CUDA}")
   find_package(CUB)
   if(CUB_FOUND)
     include_directories(SYSTEM ${CUB_INCLUDE_DIRS})
@@ -1841,6 +1888,8 @@ if(USE_KINETO)
       set(CUPTI_LIB_NAME "cupti.lib")
     endif()
 
+    set(NVPERF_HOST_LIB_NAME "libnvperf_host.so")
+
     find_library(CUPTI_LIBRARY_PATH ${CUPTI_LIB_NAME} PATHS
         ${CUDA_SOURCE_DIR}
         ${CUDA_SOURCE_DIR}/extras/CUPTI/lib64
@@ -1855,12 +1904,26 @@ if(USE_KINETO)
         ${CUDA_SOURCE_DIR}/include
         NO_DEFAULT_PATH)
 
+    find_library(NVPERF_HOST_LIBRARY_PATH ${NVPERF_HOST_LIB_NAME} PATHS
+        ${CUDA_SOURCE_DIR}
+        ${CUDA_SOURCE_DIR}/lib
+        ${CUDA_SOURCE_DIR}/lib64
+        ${CUDA_SOURCE_DIR}/extras/CUPTI/lib64
+        NO_DEFAULT_PATH)
+
     if(CUPTI_LIBRARY_PATH AND CUPTI_INCLUDE_DIR)
       message(STATUS "  CUPTI_INCLUDE_DIR = ${CUPTI_INCLUDE_DIR}")
       set(CUDA_cupti_LIBRARY ${CUPTI_LIBRARY_PATH})
       message(STATUS "  CUDA_cupti_LIBRARY = ${CUDA_cupti_LIBRARY}")
+      # CUPTI Range Profiler requires the NVPerf library
+      # for configuring metrics
+      if(NVPERF_HOST_LIBRARY_PATH)
+        set(CUDA_nvperf_host_LIBRARY ${NVPERF_HOST_LIBRARY_PATH})
+        message(STATUS "  CUDA_nvperf_host_LIBRARY = ${NVPERF_HOST_LIBRARY_PATH}")
+      endif()
       message(STATUS "Found CUPTI")
       set(LIBKINETO_NOCUPTI OFF CACHE STRING "" FORCE)
+
 
       # I've only tested this sanity check on Linux; if someone
       # runs into this bug on another platform feel free to
