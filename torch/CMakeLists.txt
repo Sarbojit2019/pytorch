@@ -149,8 +149,8 @@ if(USE_ROCM)
         USE_ROCM
         __HIP_PLATFORM_AMD__
         )
-    endif()  
-    list(APPEND TORCH_PYTHON_LINK_LIBRARIES ${ROCM_ROCTX_LIB})
+      list(APPEND TORCH_PYTHON_LINK_LIBRARIES ${ROCM_ROCTX_LIB})
+    endif()
 endif()
 
 if(USE_XPU)

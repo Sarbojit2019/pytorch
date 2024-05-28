@@ -1097,7 +1097,7 @@ endif()
 
 # ---[ Main build
 add_subdirectory(c10)
-#add_subdirectory(caffe2)
+add_subdirectory(caffe2)
 
 # --[ Documentation
 if(BUILD_DOCS)

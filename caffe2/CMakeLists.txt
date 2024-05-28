@@ -705,9 +705,14 @@ if(USE_ROCM)
   # caffe2_nvrtc's stubs to driver APIs are useful for HIP.
   # See NOTE [ ATen NVRTC Stub and HIP ]
   add_library(caffe2_nvrtc SHARED ${ATen_NVRTC_STUB_SRCS})
-  target_link_libraries(caffe2_nvrtc ${PYTORCH_HIP_LIBRARIES} ${ROCM_HIPRTC_LIB})
   target_include_directories(caffe2_nvrtc PRIVATE ${CMAKE_BINARY_DIR})
-  target_compile_definitions(caffe2_nvrtc PRIVATE USE_ROCM __HIP_PLATFORM_AMD__)
+  if(USE_CHIP)
+    target_link_libraries(caffe2_nvrtc ${PYTORCH_HIP_LIBRARIES})
+    target_compile_definitions(caffe2_nvrtc PRIVATE USE_ROCM __HIP_PLATFORM_SPIRV__)
+  else()
+    target_link_libraries(caffe2_nvrtc ${PYTORCH_HIP_LIBRARIES} ${ROCM_HIPRTC_LIB})
+    target_compile_definitions(caffe2_nvrtc PRIVATE USE_ROCM __HIP_PLATFORM_AMD__)
+  endif()
   install(TARGETS caffe2_nvrtc DESTINATION "${TORCH_INSTALL_LIB_DIR}")
 endif()
 
@@ -967,8 +972,10 @@ if(USE_ROCM)
   list(APPEND Caffe2_HIP_SRCS ${GENERATED_CXX_TORCH_CUDA})
   hip_add_library(torch_hip ${Caffe2_HIP_SRCS})
   if(USE_FLASH_ATTENTION)
-    target_link_libraries(torch_hip PRIVATE __caffe2_aotriton)
-    add_dependencies(torch_hip aotriton_external)
+    if(NOT USE_CHIP)
+      target_link_libraries(torch_hip PRIVATE __caffe2_aotriton)
+      add_dependencies(torch_hip aotriton_external)
+    endif()
   endif()
   set(CUDA_LINK_LIBRARIES_KEYWORD)
   torch_compile_options(torch_hip)  # see cmake/public/utils.cmake
@@ -1357,24 +1364,45 @@ if(NOT NO_API)
 endif()
 
 if(USE_ROCM)
-  target_compile_definitions(torch_hip PRIVATE
-    USE_ROCM
-    __HIP_PLATFORM_AMD__
-    )
-  # NB: Massive hack.  torch/csrc/jit/codegen/fuser/codegen.cpp includes
-  # torch/csrc/jit/codegen/fuser/cuda/resource_strings.h which changes the
-  # strings depending on if you're __HIP_PLATFORM_AMD__ or not.
-  # But that file is in torch_cpu!  So, against all odds, this macro
-  # has to be set on torch_cpu too.  I also added it to torch for
-  # better luck
-  target_compile_definitions(torch_cpu PRIVATE
-    USE_ROCM
-    __HIP_PLATFORM_AMD__
-    )
-  target_compile_definitions(torch PRIVATE
-    USE_ROCM
-    __HIP_PLATFORM_AMD__
-    )
+  if(USE_CHIP)
+    target_compile_definitions(torch_hip PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_SPIRV__
+      )
+    # NB: Massive hack.  torch/csrc/jit/codegen/fuser/codegen.cpp includes
+    # torch/csrc/jit/codegen/fuser/cuda/resource_strings.h which changes the
+    # strings depending on if you're __HIP_PLATFORM_AMD__ or not.
+    # But that file is in torch_cpu!  So, against all odds, this macro
+    # has to be set on torch_cpu too.  I also added it to torch for
+    # better luck
+    target_compile_definitions(torch_cpu PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_SPIRV__
+      )
+    target_compile_definitions(torch PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_SPIRV__
+      )
+  else()
+    target_compile_definitions(torch_hip PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_AMD__
+      )
+    # NB: Massive hack.  torch/csrc/jit/codegen/fuser/codegen.cpp includes
+    # torch/csrc/jit/codegen/fuser/cuda/resource_strings.h which changes the
+    # strings depending on if you're __HIP_PLATFORM_AMD__ or not.
+    # But that file is in torch_cpu!  So, against all odds, this macro
+    # has to be set on torch_cpu too.  I also added it to torch for
+    # better luck
+    target_compile_definitions(torch_cpu PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_AMD__
+      )
+    target_compile_definitions(torch PRIVATE
+      USE_ROCM
+      __HIP_PLATFORM_AMD__
+      )
+  endif()
 
   if(NOT ROCM_SOURCE_DIR)
     set(ROCM_SOURCE_DIR "$ENV{ROCM_SOURCE_DIR}")
