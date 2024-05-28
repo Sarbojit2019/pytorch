@@ -139,10 +139,17 @@ if(USE_ROCM)
     append_filelist("libtorch_python_cuda_core_sources" TORCH_PYTHON_SRCS)
     list(APPEND TORCH_PYTHON_SRCS ${GENERATED_THNN_CXX_CUDA})
 
-    list(APPEND TORCH_PYTHON_COMPILE_DEFINITIONS
-      USE_ROCM
-      __HIP_PLATFORM_AMD__
-      )
+    if(USE_CHIP)
+      list(APPEND TORCH_PYTHON_COMPILE_DEFINITIONS
+        USE_ROCM
+        __HIP_PLATFORM_SPIRV__
+        )
+    else()
+      list(APPEND TORCH_PYTHON_COMPILE_DEFINITIONS
+        USE_ROCM
+        __HIP_PLATFORM_AMD__
+        )
+    endif()  
     list(APPEND TORCH_PYTHON_LINK_LIBRARIES ${ROCM_ROCTX_LIB})
 endif()
 
